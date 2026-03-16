@@ -42,6 +42,10 @@ results/
 *.json
 *.txt
 
+# Resume folders
+Resume/
+resume/
+
 # Logs
 *.log
 
