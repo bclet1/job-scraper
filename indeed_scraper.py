@@ -10,8 +10,6 @@ from bs4 import BeautifulSoup
 from urllib.parse import quote
 import logging
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -23,7 +21,7 @@ class IndeedScraper:
         self.base_url = "https://www.indeed.com/jobs"
         self.jobs = []
         
-    def scrape_jobs(self, keywords: List[str], locations: List[str], max_jobs: int = 25) -> List[Dict]:
+    def scrape_jobs(self, keywords: List[str], locations: List[str], max_jobs: int = 25, days_old: int = 1) -> List[Dict]:
         """
         Scrape job listings from Indeed.
         
@@ -31,6 +29,7 @@ class IndeedScraper:
             keywords: List of job title keywords to search
             locations: List of locations (e.g., "Denver, CO", "remote")
             max_jobs: Maximum number of jobs to scrape PER KEYWORD
+            days_old: Only return jobs posted within this many days (1 = last 24 hours)
             
         Returns:
             List of job dictionaries with title, company, location, salary, link, description
@@ -55,7 +54,7 @@ class IndeedScraper:
                     
                     try:
                         jobs = self._scrape_keyword_location(
-                            browser, keyword, location, jobs_per_keyword
+                            browser, keyword, location, jobs_per_keyword, days_old
                         )
                         all_jobs.extend(jobs)
                     except Exception as e:
@@ -78,17 +77,17 @@ class IndeedScraper:
         
         return unique_jobs[:max_jobs]
     
-    def _scrape_keyword_location(self, browser, keyword: str, location: str, limit: int) -> List[Dict]:
+    def _scrape_keyword_location(self, browser, keyword: str, location: str, limit: int, days_old: int = 1) -> List[Dict]:
         """Scrape jobs for a specific keyword and location."""
         page = browser.new_page()
         page.set_extra_http_headers({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
         
         try:
-            # Build URL with date filter for last 7 days
+            # Build URL with date filter using Indeed's fromage parameter (days since posting)
             if location.lower() == 'remote':
-                url = f"{self.base_url}?q={quote(keyword)}&l=&sc=0kf%3Aattr%28DSQF7%29%3B&date=7&vjk"
+                url = f"{self.base_url}?q={quote(keyword)}&l=&sc=0kf%3Aattr%28DSQF7%29%3B&fromage={days_old}"
             else:
-                url = f"{self.base_url}?q={quote(keyword)}&l={quote(location)}&date=7&vjk"
+                url = f"{self.base_url}?q={quote(keyword)}&l={quote(location)}&fromage={days_old}"
             
             logger.debug(f"Fetching: {url}")
             page.goto(url, wait_until="domcontentloaded", timeout=30000)
@@ -163,58 +162,117 @@ class IndeedScraper:
         
         finally:
             page.close()
+
+    def _get_text_by_selectors(self, card, selectors: List[str]) -> str:
+        """Return first non-empty text from a list of CSS selectors."""
+        for selector in selectors:
+            elem = card.select_one(selector)
+            if elem:
+                text = elem.get_text(" ", strip=True)
+                if text:
+                    return text
+        return ""
+
+    def _get_href_by_selectors(self, card, selectors: List[str]) -> str:
+        """Return first non-empty href from a list of CSS selectors."""
+        for selector in selectors:
+            elem = card.select_one(selector)
+            if elem:
+                href = (elem.get('href') or "").strip()
+                if href:
+                    return href
+        return ""
+
+    def _extract_salary_text(self, text: str) -> str:
+        """Extract first salary-like value from free text."""
+        if not text:
+            return ""
+
+        patterns = [
+            r'\$\s?\d[\d,]*(?:\.\d+)?\s?(?:[kKmM])?\s*(?:-|to)\s*\$\s?\d[\d,]*(?:\.\d+)?\s?(?:[kKmM])?\s*(?:per\s+)?(?:year|yr|hour|hr|month|week|day)?',
+            r'\$\s?\d[\d,]*(?:\.\d+)?\s?(?:[kKmM])?\s*(?:per\s+)?(?:year|yr|hour|hr|month|week|day)',
+            r'\$\s?\d[\d,]*(?:\.\d+)?\s?(?:[kKmM])?\+',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, text, flags=re.IGNORECASE)
+            if match:
+                return re.sub(r'\s+', ' ', match.group(0)).strip()
+
+        return ""
     
     def _parse_job_card(self, card) -> Optional[Dict]:
         """Parse individual job card HTML."""
         try:
-            # Extract title and link from title element
-            title_elem = card.find('h2', class_='jobTitle')
-            if not title_elem:
+            title = self._get_text_by_selectors(card, [
+                "h2.jobTitle a",
+                "h2.jobTitle",
+                "h2[data-testid='jobTitle'] a",
+                "h2[data-testid='jobTitle']",
+                "a[data-testid='job-title']",
+                "a.jcs-JobTitle",
+            ])
+            if not title:
                 return None
-            title = title_elem.get_text(strip=True)
-            
-            # Try to get link from the title anchor tag first
-            link = ""
-            title_link = title_elem.find('a')
-            if title_link:
-                link = title_link.get('href', '')
-            
-            # If not found in title, look for any link in the card
+
+            link = self._get_href_by_selectors(card, [
+                "h2.jobTitle a",
+                "h2[data-testid='jobTitle'] a",
+                "a[data-testid='job-title']",
+                "a.jcs-JobTitle",
+                "a[data-jk]",
+            ])
+
             if not link:
-                # Try to find a data-jk attribute (job key) that can be used to construct the link
-                jk_attr = card.get('data-jk')
+                jk_attr = card.get('data-jk') or card.get('data-job-id')
                 if jk_attr:
                     link = f"https://www.indeed.com/viewjob?jk={jk_attr}"
-            
-            # If still not found, try common link classes
-            if not link:
-                link_elem = card.find('a', {'class': lambda x: x and 'jcs' in x})
-                if link_elem:
-                    link = link_elem.get('href', '')
-            
-            # Ensure link is absolute URL
+
             if link and not link.startswith('http'):
                 link = f"https://www.indeed.com{link}"
-            
-            # Extract company
-            company_elem = card.find('span', {'class': lambda x: x and 'companyName' in x})
-            company = company_elem.get_text(strip=True) if company_elem else "Unknown"
-            
-            # Extract location
-            location_elem = card.find('div', {'class': lambda x: x and 'companyLocation' in x})
-            location = location_elem.get_text(strip=True) if location_elem else "Location not specified"
-            
-            # Extract salary (may not be present)
-            salary = ""
-            salary_elem = card.find('div', {'class': lambda x: x and 'salary' in x})
-            if salary_elem:
-                salary = salary_elem.get_text(strip=True)
-            
-            # Extract job description snippet
-            description = ""
-            desc_elem = card.find('div', {'class': lambda x: x and 'snippet' in x})
-            if desc_elem:
-                description = desc_elem.get_text(strip=True)
+
+            company = self._get_text_by_selectors(card, [
+                "span[data-testid='company-name']",
+                "a[data-testid='company-name']",
+                "div[data-testid='company-name']",
+                "span.companyName",
+                "span[class*='companyName']",
+            ]) or "Unknown"
+
+            location = self._get_text_by_selectors(card, [
+                "div[data-testid='text-location']",
+                "span[data-testid='text-location']",
+                "div.companyLocation",
+                "div[class*='companyLocation']",
+            ]) or "Location not specified"
+
+            salary = self._get_text_by_selectors(card, [
+                "div[data-testid='attribute_snippet_testid']",
+                "div.salary-snippet-container",
+                "span.estimated-salary",
+                "div[class*='salary']",
+                "span[class*='salary']",
+            ])
+
+            if not self._extract_salary_text(salary):
+                salary_candidates = [
+                    elem.get_text(" ", strip=True)
+                    for elem in card.select("[data-testid='attribute_snippet_testid'], span.estimated-salary, div.salary-snippet-container")
+                ]
+                salary = self._extract_salary_text(" | ".join(salary_candidates))
+
+            if not salary:
+                salary = self._extract_salary_text(card.get_text(" ", strip=True))
+
+            if not salary:
+                salary = "Not specified"
+
+            description = self._get_text_by_selectors(card, [
+                "div[data-testid='job-snippet']",
+                "div.job-snippet",
+                "div.snippet",
+                "div[class*='snippet']",
+            ])
             
             return {
                 'title': title,
@@ -230,7 +288,7 @@ class IndeedScraper:
             return None
 
 
-def scrape_indeed(keywords: List[str], locations: List[str], max_jobs: int = 25) -> List[Dict]:
+def scrape_indeed(keywords: List[str], locations: List[str], max_jobs: int = 25, days_old: int = 1) -> List[Dict]:
     """
     Convenience function to scrape Indeed.
     
@@ -238,12 +296,13 @@ def scrape_indeed(keywords: List[str], locations: List[str], max_jobs: int = 25)
         keywords: List of job keywords
         locations: List of locations
         max_jobs: Max jobs to collect per keyword
+        days_old: Only return jobs posted within this many days (1 = last 24 hours)
         
     Returns:
         List of job dictionaries (deduplicated)
     """
     scraper = IndeedScraper()
-    return scraper.scrape_jobs(keywords, locations, max_jobs)
+    return scraper.scrape_jobs(keywords, locations, max_jobs, days_old)
 
 
 if __name__ == "__main__":

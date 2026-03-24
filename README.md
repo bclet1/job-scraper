@@ -1,14 +1,15 @@
-# Job Scraper & Ranker for Indeed
+# Job Scraper & Ranker for Indeed + Built In
 
-Scrape Indeed job postings and automatically rank them by compatibility with your resume using semantic AI matching.
+Scrape Indeed and Built In job postings and automatically rank them by compatibility with your resume using semantic AI matching.
 
 ## Features
 
-✅ **Scrapes Indeed** - Automatically collects job postings for multiple keywords and locations  
+✅ **Scrapes Indeed + Built In** - Collects job postings for multiple keywords and locations  
 ✅ **Semantic Matching** - Uses AI embeddings to understand skills, not just keywords  
 ✅ **Smart Ranking** - Rates jobs by resumé fit with matched/missing skills  
 ✅ **Multi-format Output** - CSV (spreadsheet), JSON (programmatic), and TXT (human-readable)  
 ✅ **Salary Tracking** - Extracts and records salary ranges from postings
+✅ **Comparison Report** - Produces a combined cross-site comparison report
 
 ## Quick Start
 
@@ -30,9 +31,9 @@ Place your resume PDF in the `Resume/` folder:
 ```
 job-scraper/
 ├── Resume/
-│   └── BrianLetourneauResume2026.pdf
+│   └── resume.pdf
 ├── config.json
-└── job_scraper.py
+└── multi_job_scraper.py
 ```
 
 ### 3. Configure Search (Optional)
@@ -60,17 +61,17 @@ Edit `config.json` to customize:
 ### 4. Run the Scraper
 
 ```bash
-python job_scraper.py
+python multi_job_scraper.py
 ```
 
 Wait for scraping and ranking to complete (2-10 minutes depending on job volume).
 
 ### 5. Check Results
 
-Results are saved in:
-- **`results/job_rankings_*.csv`** - Spreadsheet format
-- **`results/job_rankings_*.json`** - Structured data format
-- **`results/job_rankings_*.txt`** - Human-readable summary
+Results are saved in a timestamped run folder with:
+- **`indeed/`** - Indeed rankings in CSV, JSON, and TXT
+- **`builtin/`** - Built In rankings in CSV, JSON, and TXT
+- **`comparison/`** - Combined comparison report in CSV, JSON, and TXT
 
 ## Output Format
 
@@ -100,7 +101,7 @@ rank,compatibility_score,title,company,location,salary,matched_skills,missing_sk
 The ranking algorithm uses **semantic embeddings** to understand job requirements:
 
 1. **Resume Parsing** - Extracts text, skills, and experience from PDF
-2. **Job Scraping** - Collects postings from Indeed with Playwright
+2. **Job Scraping** - Collects postings from Indeed and Built In
 3. **Semantic Analysis** - Converts resume and jobs to AI embeddings
 4. **Similarity Scoring** - Calculates semantic match (0-100%)
 5. **Skill Extraction** - Identifies matched/missing tech keywords
@@ -115,17 +116,17 @@ The ranking algorithm uses **semantic embeddings** to understand job requirement
 
 ### Custom Resume Path
 ```bash
-python job_scraper.py --resume /path/to/my/resume.pdf
+python multi_job_scraper.py --resume /path/to/my/resume.pdf
 ```
 
 ### Custom Output Directory
 ```bash
-python job_scraper.py --output /path/to/results
+python multi_job_scraper.py --output /path/to/results
 ```
 
 ### Custom Config File
 ```bash
-python job_scraper.py --config /path/to/custom_config.json
+python multi_job_scraper.py --config /path/to/custom_config.json
 ```
 
 ## Troubleshooting
@@ -143,7 +144,7 @@ playwright install chromium
 ### "Resume file not found"
 - Check the `resume_path` in `config.json`
 - Ensure the PDF file exists and is readable
-- Paths can be absolute or relative to `job_scraper.py`
+- Paths can be absolute or relative to `multi_job_scraper.py`
 
 ### "No jobs found"
 - Try different keywords or locations
@@ -159,9 +160,11 @@ playwright install chromium
 
 ```
 job-scraper/
-├── job_scraper.py          # Main orchestration script
+├── multi_job_scraper.py    # Main orchestration script
+├── pipeline_utils.py       # Shared config/output helpers
 ├── resume_parser.py        # Parse resume from PDF
 ├── indeed_scraper.py       # Scrape job postings from Indeed
+├── builtin_scraper.py      # Scrape job postings from Built In
 ├── matcher.py              # Rank jobs by resume match
 ├── config.json             # Search keywords, locations, paths
 ├── pyproject.toml          # Dependencies specification
@@ -183,7 +186,7 @@ job-scraper/
 
 ## Notes
 
-- **Rate Limiting**: Script adds delays between requests to avoid blocking
+- **Rate Limiting**: Scripts add delays between requests to avoid blocking
 - **Salary Tracking**: May not be present on all job postings
 - **Freshness**: Job links go directly to Indeed; verify apply links still work
 - **Resume Privacy**: All processing is local; no data sent to external services

@@ -41,12 +41,12 @@ if exist requirements.txt (
 echo [3/4] Installing Playwright browser...
 python -m playwright install chromium >nul 2>&1
 
-echo [4/4] Running job scraper...
+echo [4/4] Running Indeed + Built In scrapers and comparison...
 echo.
-python job_scraper.py
+python multi_job_scraper.py
 
 echo.
 echo ================================================
-echo Complete! Check results/ folder for output
+echo Complete! Check results/ folder for indeed, builtin, and comparison output
 echo ================================================
 pause
