@@ -23,7 +23,7 @@ python3 -m pip install -r requirements.txt -q
 echo "[3/4] Installing Playwright browser..."
 python3 -m playwright install chromium -q
 
-echo "[4/4] Running Indeed + Built In scrapers and comparison..."
+echo "[4/4] Running scrapers and comparison..."
 echo ""
 python3 multi_job_scraper.py
 

@@ -35,13 +35,13 @@ if exist requirements.txt (
     python -m pip install -r requirements.txt >nul 2>&1
 ) else (
     echo Installing packages individually...
-    python -m pip install playwright beautifulsoup4 pandas pydantic sentence-transformers scikit-learn PyPDF2 python-docx requests python-dotenv torch >nul 2>&1
+    python -m pip install playwright beautifulsoup4 pandas pydantic sentence-transformers scikit-learn pypdf python-docx requests python-dotenv torch >nul 2>&1
 )
 
 echo [3/4] Installing Playwright browser...
 python -m playwright install chromium >nul 2>&1
 
-echo [4/4] Running Indeed + Built In scrapers and comparison...
+echo [4/4] Running all scrapers and comparison...
 echo.
 python multi_job_scraper.py
 

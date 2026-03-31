@@ -2,9 +2,9 @@
 Resume parser - extracts text and key information from PDF resumes.
 """
 
-import PyPDF2
+import pypdf
 import re
-from typing import Dict, List
+from typing import Dict
 
 
 def extract_text_from_pdf(pdf_path: str) -> str:
@@ -12,7 +12,7 @@ def extract_text_from_pdf(pdf_path: str) -> str:
     text = ""
     try:
         with open(pdf_path, "rb") as pdf_file:
-            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            pdf_reader = pypdf.PdfReader(pdf_file)
             for page in pdf_reader.pages:
                 text += page.extract_text()
         return text

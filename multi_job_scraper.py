@@ -8,6 +8,7 @@ results folder with site-specific subfolders plus a comparison report.
 
 import argparse
 import csv
+import importlib
 import json
 import logging
 import os
@@ -15,12 +16,8 @@ import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple
 
-from builtin_scraper import scrape_builtin
-from dice_scraper import scrape_dice
-from indeed_scraper import scrape_indeed
-from linkedin_scraper import scrape_linkedin
 from logging_setup import configure_logging
 from pipeline_utils import (
     load_config,
@@ -34,6 +31,37 @@ from resume_parser import parse_resume
 
 configure_logging()
 logger = logging.getLogger(__name__)
+
+
+def load_scrapers(scrapers_dir: str = 'scrapers') -> List[Tuple[str, Callable]]:
+    """Discover and return all scrapers from *scrapers_dir*.
+
+    Scans for ``<site>_scraper.py`` files and loads the ``scrape_<site>``
+    function from each.  Returns a list of (site_label, callable) tuples
+    sorted alphabetically so execution order is deterministic.
+    """
+    base = os.path.dirname(os.path.abspath(__file__))
+    scrapers_path = os.path.join(base, scrapers_dir)
+    sources: List[Tuple[str, Callable]] = []
+
+    for filename in sorted(os.listdir(scrapers_path)):
+        if not filename.endswith('_scraper.py'):
+            continue
+        site = filename[: -len('_scraper.py')]          # e.g. "indeed"
+        module_name = f'{scrapers_dir}.{filename[:-3]}' # e.g. "scrapers.indeed_scraper"
+        fn_name = f'scrape_{site}'
+        try:
+            module = importlib.import_module(module_name)
+            fn = getattr(module, fn_name, None)
+            if fn and callable(fn):
+                sources.append((site, fn))
+                logger.debug(f'Loaded scraper: {fn_name} from {module_name}')
+            else:
+                logger.warning(f'No {fn_name}() in {module_name} — skipped')
+        except Exception as exc:
+            logger.warning(f'Failed to load {module_name}: {exc}')
+
+    return sources
 
 
 def annotate_source(jobs: List[Dict], source: str) -> List[Dict]:
@@ -206,6 +234,26 @@ def run_source(label: str, scraper_func, resume_data: Dict, keywords: List[str],
     return annotate_source(ranked, label)
 
 
+def find_resume(resume_dir: str = './Resume') -> str:
+    """Return the path to the single PDF in *resume_dir*.
+
+    Raises FileNotFoundError if none or more than one PDF is found.
+    """
+    pdfs = [
+        os.path.join(resume_dir, f)
+        for f in os.listdir(resume_dir)
+        if f.lower().endswith('.pdf')
+    ] if os.path.isdir(resume_dir) else []
+
+    if len(pdfs) == 1:
+        return pdfs[0]
+    if len(pdfs) == 0:
+        raise FileNotFoundError(f"No PDF found in '{resume_dir}'. Place your resume there or pass --resume.")
+    raise FileNotFoundError(
+        f"Multiple PDFs found in '{resume_dir}': {pdfs}. Remove all but one or pass --resume."
+    )
+
+
 def main(resume_path: str = None, output_dir: str = None, config_path: str = 'config.json', days_old: int = None) -> int:
     logger.info('=' * 80)
     logger.info('MULTI-SOURCE JOB SCRAPER - Starting')
@@ -214,7 +262,7 @@ def main(resume_path: str = None, output_dir: str = None, config_path: str = 'co
     config = load_config(config_path)
 
     days_old_override = days_old
-    resume_path = resume_path or config.get('resume_path')
+    resume_path = resume_path or config.get('resume_path') or find_resume()
     output_dir = output_dir or config.get('output_dir', './results')
     keywords = config.get('keywords', [])
     locations = config.get('locations', [])
@@ -239,12 +287,7 @@ def main(resume_path: str = None, output_dir: str = None, config_path: str = 'co
         return 1
 
     logger.info('\nStep 2: Scraping and ranking job postings (parallel)...')
-    sources = [
-        ('indeed',   scrape_indeed),
-        ('builtin',  scrape_builtin),
-        ('linkedin', scrape_linkedin),
-        ('dice',     scrape_dice),
-    ]
+    sources = load_scrapers()
     results: Dict[str, List[Dict]] = {}
     try:
         with ThreadPoolExecutor(max_workers=len(sources)) as executor:
@@ -265,42 +308,26 @@ def main(resume_path: str = None, output_dir: str = None, config_path: str = 'co
         logger.error(f"✗ Failed during parallel scraping/ranking: {exc}")
         return 1
 
-    indeed_ranked   = results.get('indeed',   [])
-    builtin_ranked  = results.get('builtin',  [])
-    linkedin_ranked = results.get('linkedin', [])
-    dice_ranked     = results.get('dice',     [])
-
-    if not indeed_ranked and not builtin_ranked and not linkedin_ranked and not dice_ranked:
+    if not any(results.values()):
         logger.warning('No jobs found from any source. Exiting.')
         return 1
 
     logger.info('\nStep 3: Saving site outputs and comparison report...')
     timestamp = datetime.now().strftime('%m-%d_%H-%M')
     run_dir = os.path.join(output_dir, timestamp)
-    indeed_dir     = os.path.join(run_dir, 'indeed')
-    builtin_dir    = os.path.join(run_dir, 'builtin')
-    linkedin_dir   = os.path.join(run_dir, 'linkedin')
-    dice_dir       = os.path.join(run_dir, 'dice')
     comparison_dir = os.path.join(run_dir, 'comparison')
 
     try:
-        setup_output_dir(indeed_dir)
-        setup_output_dir(builtin_dir)
-        setup_output_dir(linkedin_dir)
-        setup_output_dir(dice_dir)
+        for label in results:
+            setup_output_dir(os.path.join(run_dir, label))
         setup_output_dir(comparison_dir)
 
-        if indeed_ranked:
-            save_site_outputs(indeed_ranked, indeed_dir)
-        if builtin_ranked:
-            save_site_outputs(builtin_ranked, builtin_dir)
-        if linkedin_ranked:
-            save_site_outputs(linkedin_ranked, linkedin_dir)
-        if dice_ranked:
-            save_site_outputs(dice_ranked, dice_dir)
+        for label, ranked in results.items():
+            if ranked:
+                save_site_outputs(ranked, os.path.join(run_dir, label))
 
         combined_all = sorted(
-            [*indeed_ranked, *builtin_ranked, *linkedin_ranked, *dice_ranked],
+            [job for ranked in results.values() for job in ranked],
             key=lambda job: job.get('compatibility_score', 0),
             reverse=True,
         )
@@ -309,10 +336,7 @@ def main(resume_path: str = None, output_dir: str = None, config_path: str = 'co
 
         comparison_payload = {
             'generated': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'indeed_count':      len(indeed_ranked),
-            'builtin_count':     len(builtin_ranked),
-            'linkedin_count':    len(linkedin_ranked),
-            'dice_count':        len(dice_ranked),
+            **{f'{label}_count': len(ranked) for label, ranked in results.items()},
             'combined_count':    len(combined_ranked),
             'duplicates_removed': duplicates_removed,
             'jobs': [
@@ -321,12 +345,7 @@ def main(resume_path: str = None, output_dir: str = None, config_path: str = 'co
             ],
         }
 
-        source_jobs = {
-            'indeed':   indeed_ranked,
-            'builtin':  builtin_ranked,
-            'linkedin': linkedin_ranked,
-            'dice':     dice_ranked,
-        }
+        source_jobs = dict(results)
 
         save_comparison_csv(combined_ranked, os.path.join(comparison_dir, 'job_comparison.csv'))
         save_comparison_json(comparison_payload, os.path.join(comparison_dir, 'job_comparison.json'))
@@ -342,7 +361,8 @@ def main(resume_path: str = None, output_dir: str = None, config_path: str = 'co
         return 1
 
     logger.info('\n' + '=' * 80)
-    logger.info('COMPLETE - Check results/ directory for indeed, builtin, linkedin, dice, and comparison output')
+    site_list = ', '.join(results.keys())
+    logger.info(f"COMPLETE - Check results/ directory for {site_list}, and comparison output")
     logger.info('=' * 80)
     return 0
 

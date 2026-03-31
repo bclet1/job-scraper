@@ -183,7 +183,7 @@ job-scraper/
 ## Technologies Used
 
 - **Web Scraping**: Playwright (handles JavaScript/CloudFlare)
-- **Parsing**: BeautifulSoup, PyPDF2
+- **Parsing**: BeautifulSoup, pypdf
 - **NLP**: sentence-transformers (semantic embeddings)
 - **Data Processing**: pandas
 - **Analysis**: scikit-learn

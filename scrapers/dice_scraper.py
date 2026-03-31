@@ -5,11 +5,12 @@ Dice is a tech/IT-focused job board. Their site is a React SPA, so
 plain HTTP requests do not return populated job listings.
 """
 
+import json
 import random
 import re
 import time
 from typing import Dict, List, Optional
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode
 
 from bs4 import BeautifulSoup
 import logging
@@ -31,6 +32,32 @@ def _days_to_filter(days: int) -> str:
         if days <= threshold:
             return _DAYS_TO_FILTER[threshold]
     return _DAYS_TO_FILTER[30]
+
+
+def _parse_posted_days(text: str) -> Optional[int]:
+    """Convert a Dice posted-date string to number of days ago, or None if unrecognised.
+
+    Handles: "Today", "Yesterday", "3 days ago", "5d ago", "2h ago".
+    Hours are treated as 0 days old (posted today).
+    """
+    if not text:
+        return None
+    text = text.strip()
+    low = text.lower()
+    if low == "today":
+        return 0
+    if low == "yesterday":
+        return 1
+    m = re.match(r'^(\d+)\s*days?\s*ago$', low)
+    if m:
+        return int(m.group(1))
+    m = re.match(r'^(\d+)d\s*ago$', low)
+    if m:
+        return int(m.group(1))
+    m = re.match(r'^(\d+)h\s*ago$', low)
+    if m:
+        return 0  # posted within last 24 h → treat as today
+    return None
 
 
 class DiceScraper:
@@ -104,13 +131,14 @@ class DiceScraper:
 
             browser.close()
 
-        # De-duplicate by (title, company)
+        # De-duplicate by (title, company) and strip internal fields
         seen: set = set()
         unique_jobs: List[Dict] = []
         for job in all_jobs:
             key = (job.get("title", "").lower(), job.get("company", "").lower())
             if key not in seen:
                 seen.add(key)
+                job.pop("posted_date_text", None)
                 unique_jobs.append(job)
 
         return unique_jobs[:max_jobs]
@@ -190,6 +218,14 @@ class DiceScraper:
                     break
 
                 for job in page_jobs:
+                    # Local date filter — Dice's URL buckets are coarse
+                    days_ago = _parse_posted_days(job.get("posted_date_text", ""))
+                    if days_ago is not None and days_ago > days_old:
+                        logger.debug(
+                            f"Skipping '{job.get('title')}' posted {days_ago}d ago (limit {days_old}d)"
+                        )
+                        continue
+
                     key = (job.get("title", "").lower(), job.get("company", "").lower())
                     existing_keys = {
                         (j.get("title", "").lower(), j.get("company", "").lower())
@@ -267,17 +303,21 @@ class DiceScraper:
         company_p = card.select_one("a[href*='company-profile'] p")
         company = company_p.get_text(" ", strip=True) if company_p else "Unknown"
 
-        # --- Location ---
-        # First <p class="text-sm font-normal text-zinc-600"> that isn't a bullet or date.
-        # Dice renders: location | "•" | posted-date as three separate <p> elements.
+        # --- Location + posted date ---
+        # Dice renders: location | "•" | posted-date as separate <p> elements.
         location = "Location not specified"
+        posted_date_text: str = ""
+        DATE_RE = re.compile(r'^(Today|Yesterday|\d+\s*days?\s*ago|\d+[dh]\s*ago)$', re.I)
         for p in card.find_all("p"):
             cls = p.get("class", [])
             if "text-zinc-600" in cls and "text-sm" in cls:
                 text = p.get_text(" ", strip=True)
-                if text and text != "•" and not re.match(r'^(Today|Yesterday|\d+ days? ago|\d+[dh] ago)$', text, re.I):
+                if not text or text == "•":
+                    continue
+                if DATE_RE.match(text):
+                    posted_date_text = text
+                else:
                     location = text
-                    break
 
         # --- Description snippet ---
         desc_p = next(
@@ -323,6 +363,7 @@ class DiceScraper:
             "salary": salary,
             "link": link,
             "description": description,
+            "posted_date_text": posted_date_text,
             "source": "dice",
         }
 
@@ -345,12 +386,11 @@ class DiceScraper:
             # --- Description ---
             # Dice embeds the full job description as JSON-LD in a <script> tag.
             # This is more reliable than scraping rendered HTML elements.
-            import json as _json
             description = ""
             ld_script = soup.select_one("script[data-testid='jobDetailStructuredData']")
             if ld_script and ld_script.string:
                 try:
-                    ld = _json.loads(ld_script.string)
+                    ld = json.loads(ld_script.string)
                     raw_desc = ld.get("description", "")
                     if raw_desc:
                         # Description may contain HTML; strip it

@@ -11,7 +11,7 @@ import re
 import random
 from typing import List, Dict, Optional
 from bs4 import BeautifulSoup
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode
 import logging
 
 logger = logging.getLogger(__name__)
