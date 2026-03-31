@@ -1,10 +1,10 @@
-# Job Scraper & Ranker for Indeed + Built In
+# Job Scraper & Ranker for Indeed + Built In + LinkedIn + Dice
 
-Scrape Indeed and Built In job postings and automatically rank them by compatibility with your resume using semantic AI matching.
+Scrape Indeed, Built In, LinkedIn, and Dice job postings and automatically rank them by compatibility with your resume using semantic AI matching.
 
 ## Features
 
-✅ **Scrapes Indeed + Built In** - Collects job postings for multiple keywords and locations  
+✅ **Scrapes Indeed + Built In + LinkedIn + Dice** - Collects job postings for multiple keywords and locations  
 ✅ **Semantic Matching** - Uses AI embeddings to understand skills, not just keywords  
 ✅ **Smart Ranking** - Rates jobs by resumé fit with matched/missing skills  
 ✅ **Multi-format Output** - CSV (spreadsheet), JSON (programmatic), and TXT (human-readable)  
@@ -71,6 +71,8 @@ Wait for scraping and ranking to complete (2-10 minutes depending on job volume)
 Results are saved in a timestamped run folder with:
 - **`indeed/`** - Indeed rankings in CSV, JSON, and TXT
 - **`builtin/`** - Built In rankings in CSV, JSON, and TXT
+- **`linkedin/`** - LinkedIn rankings in CSV, JSON, and TXT
+- **`dice/`** - Dice rankings in CSV, JSON, and TXT
 - **`comparison/`** - Combined comparison report in CSV, JSON, and TXT
 
 ## Output Format
@@ -101,7 +103,7 @@ rank,compatibility_score,title,company,location,salary,matched_skills,missing_sk
 The ranking algorithm uses **semantic embeddings** to understand job requirements:
 
 1. **Resume Parsing** - Extracts text, skills, and experience from PDF
-2. **Job Scraping** - Collects postings from Indeed and Built In
+2. **Job Scraping** - Collects postings from Indeed, Built In, LinkedIn, and Dice
 3. **Semantic Analysis** - Converts resume and jobs to AI embeddings
 4. **Similarity Scoring** - Calculates semantic match (0-100%)
 5. **Skill Extraction** - Identifies matched/missing tech keywords
@@ -165,6 +167,8 @@ job-scraper/
 ├── resume_parser.py        # Parse resume from PDF
 ├── indeed_scraper.py       # Scrape job postings from Indeed
 ├── builtin_scraper.py      # Scrape job postings from Built In
+├── linkedin_scraper.py     # Scrape job postings from LinkedIn
+├── dice_scraper.py         # Scrape job postings from Dice
 ├── matcher.py              # Rank jobs by resume match
 ├── config.json             # Search keywords, locations, paths
 ├── pyproject.toml          # Dependencies specification
@@ -199,7 +203,9 @@ job-scraper/
 - [ ] Support for custom resume words/phrases below 70% match
 - [ ] Resume improvement suggestions based on top jobs
 - [ ] Filter by salary range, experience level
-- [ ] Support for other job boards (LinkedIn, Glassdoor, etc.)
+- [x] LinkedIn scraper
+- [x] Dice scraper
+- [ ] Support for additional job boards (ZipRecruiter, Glassdoor, etc.)
 
 ## License
 
