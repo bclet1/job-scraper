@@ -91,15 +91,26 @@ class LinkedInScraper:
 
             for keyword in keywords:
                 logger.info(f"Searching LinkedIn for: {keyword}")
+                keyword_jobs: List[Dict] = []
+                seen_kw: set = set()
 
                 for location in locations:
-                    logger.info(f"  Location: {location}")
+                    if len(keyword_jobs) >= max_jobs:
+                        break
+                    remaining = max_jobs - len(keyword_jobs)
+                    logger.info(f"  Location: {location} (need {remaining} more)")
 
                     try:
                         jobs = self._scrape_keyword_location(
-                            browser, keyword, location, max_jobs, days_old
+                            browser, keyword, location, remaining, days_old
                         )
-                        all_jobs.extend(jobs)
+                        for job in jobs:
+                            key = (job.get("title", "").lower(), job.get("company", "").lower())
+                            if key not in seen_kw:
+                                seen_kw.add(key)
+                                keyword_jobs.append(job)
+                                if len(keyword_jobs) >= max_jobs:
+                                    break
                     except Exception as exc:
                         logger.warning(
                             f"Error scraping LinkedIn for '{keyword}' in '{location}': {exc}"
@@ -109,9 +120,13 @@ class LinkedInScraper:
                     # Polite delay between searches
                     time.sleep(random.uniform(2, 4))
 
+                logger.info(f"  Collected {len(keyword_jobs)} jobs for '{keyword}' (target {max_jobs})")
+                all_jobs.extend(keyword_jobs)
+
             browser.close()
 
-        # De-duplicate by (title, company)
+        # Final cross-keyword dedup by (title, company) to remove any jobs
+        # that appeared under more than one keyword search.
         seen: set = set()
         unique_jobs: List[Dict] = []
         for job in all_jobs:
@@ -120,7 +135,7 @@ class LinkedInScraper:
                 seen.add(key)
                 unique_jobs.append(job)
 
-        return unique_jobs[:max_jobs]
+        return unique_jobs
 
     # ------------------------------------------------------------------
     # Internal helpers
