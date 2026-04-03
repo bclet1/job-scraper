@@ -18,6 +18,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Callable, Dict, List, Tuple
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from logging_setup import configure_logging
 from pipeline_utils import (
     load_config,
@@ -28,6 +32,11 @@ from pipeline_utils import (
 )
 from matcher import rank_jobs
 from resume_parser import parse_resume
+from cover_letter_generator import (
+    DEFAULT_INSTRUCTIONS,
+    generate_cover_letters,
+    save_cover_letters,
+)
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -268,6 +277,8 @@ def main(resume_path: str = None, output_dir: str = None, config_path: str = 'co
     locations = config.get('locations', [])
     max_jobs = config.get('max_jobs', 25)
     days_old = days_old_override if days_old_override is not None else config.get('days_old', 1)
+    cover_letter_instructions = config.get('cover_letter_instructions', DEFAULT_INSTRUCTIONS)
+    cover_letter_model = config.get('cover_letter_model', 'gpt-4o-mini')
 
     logger.info(f"Resume: {resume_path}")
     logger.info(f"Output: {output_dir}")
@@ -359,6 +370,36 @@ def main(resume_path: str = None, output_dir: str = None, config_path: str = 'co
     except Exception as exc:
         logger.error(f"✗ Failed to save outputs: {exc}")
         return 1
+
+    print('\nStep 4: Generating cover letters for top 25 jobs...')
+    cover_letters_dir = os.path.join(comparison_dir, 'cover_letters')
+    top_jobs = combined_ranked[:25]
+    cover_letter_errors = 0
+    for rank, job in enumerate(top_jobs, 1):
+        try:
+            ranked_job = {**job, 'rank': rank}
+            variants = generate_cover_letters(
+                resume_data,
+                ranked_job,
+                instructions=cover_letter_instructions,
+                model=cover_letter_model,
+            )
+            save_cover_letters(variants, rank, cover_letters_dir, ranked_job)
+            print(
+                f"  ✓ Rank #{rank}: {job.get('title')} @ {job.get('company')} "
+                f"({len(variants)} version(s))"
+            )
+        except Exception as exc:
+            print(f"  ✗ Rank #{rank}: cover letter generation failed – {exc}")
+            cover_letter_errors += 1
+
+    if cover_letter_errors < len(top_jobs):
+        print(
+            f"✓ Cover letters saved to {cover_letters_dir}/ "
+            f"({len(top_jobs) - cover_letter_errors}/{len(top_jobs)} jobs)"
+        )
+    else:
+        print('✗ No cover letters could be generated (check OPENAI_API_KEY / GITHUB_TOKEN in .env)')
 
     logger.info('\n' + '=' * 80)
     site_list = ', '.join(results.keys())
