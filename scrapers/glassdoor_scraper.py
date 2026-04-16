@@ -143,6 +143,7 @@ class GlassdoorScraper:
                 all_jobs.extend(keyword_jobs)
 
             browser.close()
+            time.sleep(0.5)  # Allow Playwright's Node subprocess to drain pending I/O before pipe closes
 
         # Final cross-keyword dedup by (title, company) — case-insensitive.
         seen: set = set()
