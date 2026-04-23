@@ -1,28 +1,30 @@
 # Job Scraper — Claude Agent Context
 
 ## Project Purpose
-Scrape job postings from Indeed, Built In, LinkedIn, and Dice, then rank them by
-compatibility with a resume PDF using semantic AI embeddings. Output is written to
-timestamped result folders under `results/`.
+Scrape job postings from Indeed, Built In, LinkedIn, Dice, and Glassdoor, rank them by
+compatibility with a resume PDF using semantic AI embeddings, and generate tailored cover
+letters for the top matches. Output is written to timestamped result folders under `results/`.
 
 ---
 
 ## Architecture
 
 ```
-multi_job_scraper.py   ← Entry point. Orchestrates the full pipeline.
-├── scrapers/              ← Auto-discovered site scrapers (drop a file here to add a site)
-│   ├── indeed_scraper.py  ← Playwright-based scraper (JavaScript-rendered SPA)
-│   ├── builtin_scraper.py ← requests + BeautifulSoup scraper
-│   ├── linkedin_scraper.py← Playwright-based scraper
-│   ├── dice_scraper.py    ← Playwright-based scraper (React SPA)
-│   └── glassdoor_scraper.py ← Playwright-based scraper
-├── matcher.py         ← Semantic matching via sentence-transformers
-├── resume_parser.py   ← PDF text extraction (pypdf)
-├── pipeline_utils.py  ← Shared config loading + CSV/JSON/TXT output helpers
-├── logging_setup.py   ← Suppresses noisy third-party loggers
-├── config.json        ← Search configuration (keywords, locations, max_jobs, etc.)
-└── results/           ← Output directory (timestamped subfolders per run)
+multi_job_scraper.py      ← Entry point. Orchestrates the full pipeline.
+├── scrapers/                 ← Auto-discovered site scrapers (drop a file here to add a site)
+│   ├── indeed_scraper.py     ← Playwright-based scraper (JavaScript-rendered SPA)
+│   ├── builtin_scraper.py    ← requests + BeautifulSoup scraper
+│   ├── linkedin_scraper.py   ← Playwright-based scraper
+│   ├── dice_scraper.py       ← Playwright-based scraper (React SPA)
+│   └── glassdoor_scraper.py  ← Playwright-based scraper
+├── matcher.py                ← Semantic matching via sentence-transformers
+├── resume_parser.py          ← PDF text extraction (pypdf)
+├── cover_letter_generator.py ← OpenAI cover letter generation (3 variants per job)
+├── pipeline_utils.py         ← Shared config loading + CSV/JSON/TXT output helpers
+├── logging_setup.py          ← Suppresses noisy third-party loggers
+├── mcp_server.py             ← MCP server for Claude Desktop / claude CLI
+├── config.json               ← Search configuration (keywords, locations, max_jobs, etc.)
+└── results/                  ← Output directory (timestamped subfolders per run)
 ```
 
 ### Data Flow
@@ -31,6 +33,7 @@ multi_job_scraper.py   ← Entry point. Orchestrates the full pipeline.
 3. Each scraper returns `List[Dict]` with fields: `title`, `company`, `location`, `salary`, `link`, `description`
 4. `rank_jobs()` scores each job against the resume using cosine similarity (sentence-transformers `all-MiniLM-L6-v2`)
 5. Results are annotated with `source`, saved per-site, then merged into a deduped comparison report
+6. `generate_cover_letters()` produces 3 variants for the top 25 jobs via OpenAI and saves them under `comparison/cover_letters/`
 
 ---
 
@@ -154,16 +157,19 @@ for j in jobs[:5]:
 | `days_old` | `int` | Only include postings from last N days |
 | `resume_path` | `str` | *(Optional)* Path to resume PDF — auto-detected from `./Resume/*.pdf` if omitted |
 | `output_dir` | `str` | Base output directory (default `./results`) |
+| `cover_letter_model` | `str` | OpenAI model for cover letters (default `gpt-4o-mini`) |
+| `cover_letter_instructions` | `str` | System prompt controlling cover letter style/structure |
 
 ---
 
 ## CLI
 
 ```bash
-python multi_job_scraper.py                         # uses config.json defaults
-python multi_job_scraper.py --days 7                # override days_old
-python multi_job_scraper.py --resume ./Resume/r.pdf # override resume path
-python multi_job_scraper.py --config other.json     # use alternate config
+python multi_job_scraper.py                          # uses config.json defaults
+python multi_job_scraper.py --days 7                 # override days_old
+python multi_job_scraper.py --resume ./Resume/r.pdf  # override resume path
+python multi_job_scraper.py --output ./my-results    # override output dir
+python multi_job_scraper.py --config other.json      # use alternate config
 
 # Windows shortcut
 .\run.bat
@@ -183,10 +189,12 @@ results/
     ├── builtin/
     ├── linkedin/
     ├── dice/
+    ├── glassdoor/
     └── comparison/
-        ├── job_comparison.csv   ← all sources merged, deduped, ranked
+        ├── job_comparison.csv        ← all sources merged, deduped, ranked
         ├── job_comparison.json
-        └── job_comparison.txt   ← human-readable with overlap analysis
+        ├── job_comparison.txt        ← human-readable with overlap analysis
+        └── cover_letters/            ← 3 variants per top-25 job (formal/conversational/achievement)
 ```
 
 ### Key Output Fields
@@ -208,9 +216,7 @@ results/
 
 ## Known Issues / Improvement Backlog
 
-- [x] Step 3 output saving is hardcoded per-site — needs data-driven refactor
 - [ ] `missing_skills` not ranked by cross-posting frequency
-- [x] `PyPDF2` → `pypdf` migration complete
 - [ ] Salary stored as raw string — no numeric parsing for sort/filter
 - [ ] No result caching — re-scrapes everything on each run
 - [ ] No tests — add pytest coverage for `matcher.py` and `pipeline_utils.py`
@@ -223,13 +229,16 @@ results/
 Installed via `pip install -r requirements.txt` then `playwright install chromium`.
 
 Key packages: `playwright`, `beautifulsoup4`, `sentence-transformers`, `pypdf`,
-`requests`, `torch`.
+`requests`, `torch`, `openai`, `python-dotenv`, `mcp`.
+
+Cover letter generation requires `OPENAI_API_KEY` (or `GITHUB_TOKEN`) in a `.env` file.
 
 ## MCP Server
 
-An MCP server (`mcp_server.py`) is available for Claude Desktop / claude CLI integration.
-See setup instructions at the bottom of that file. Tools exposed:
+`mcp_server.py` exposes job-scraper as an MCP tool server. See the docstring at the top
+of that file for Claude Desktop / claude CLI setup instructions. Tools exposed:
 - `get_config` / `update_config`
+- `list_runs`
 - `get_latest_results` / `get_top_matches`
 - `analyze_missing_skills`
 - `run_scraper`
