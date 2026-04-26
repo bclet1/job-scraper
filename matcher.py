@@ -6,8 +6,23 @@ Compares resume text with job descriptions to calculate compatibility score.
 from typing import List, Dict, Tuple
 import re
 import logging
+import json
+import os
 
 logger = logging.getLogger(__name__)
+
+_CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
+
+
+def _load_tech_keywords() -> set:
+    """Load tech_keywords from config.json, falling back to an empty set."""
+    try:
+        with open(_CONFIG_PATH, 'r', encoding='utf-8') as fh:
+            cfg = json.load(fh)
+        return set(cfg.get('tech_keywords', []))
+    except Exception as exc:
+        logger.warning(f"Could not load tech_keywords from config.json: {exc}")
+        return set()
 
 
 def get_embeddings_model():
@@ -25,69 +40,19 @@ def get_embeddings_model():
 def extract_tech_keywords(text: str) -> List[str]:
     """
     Extract technology keywords from text.
-    Looks for common tech terms, frameworks, and tools.
+    Keywords are loaded from config.json (``tech_keywords`` list).
     """
-    tech_keywords = {
-        # Cloud platforms
-        'AWS', 'Azure', 'GCP', 'Google Cloud', 'Kubernetes', 'K8s',
-        'Docker', 'ECS', 'EKS', 'AKS', 'GKE',
-        
-        # IaC and Configuration
-        'Terraform', 'CloudFormation', 'Ansible', 'Puppet', 'Chef',
-        'Infrastructure as Code', 'IaC',
-        
-        # CI/CD
-        'Jenkins', 'GitLab CI', 'GitHub Actions', 'CircleCI',
-        'Travis CI', 'GitLab', 'GitHub', 'Bitbucket',
-        'CI/CD', 'continuous integration', 'continuous deployment',
-        'pipeline', 'deployment automation',
-        
-        # Monitoring and Logging
-        'Prometheus', 'Grafana', 'ELK', 'Elasticsearch', 'Kibana',
-        'Datadog', 'New Relic', 'CloudWatch', 'Splunk',
-        'Logging', 'Monitoring', 'Observability',
-        
-        # Containerization
-        'Container', 'Containerization', 'Microservices',
-        'Image registry', 'Docker registry',
-        
-        # Databases
-        'PostgreSQL', 'MySQL', 'MongoDB', 'DynamoDB', 'RDS',
-        'SQL', 'NoSQL', 'Relational Database',
-        
-        # Languages and Scripting
-        'Python', 'Bash', 'Shell', 'Go', 'Java', 'Golang',
-        'Ruby', 'Perl', 'JavaScript', 'Node.js',
-        
-        # Version Control
-        'Git', 'Subversion', 'SVN', 'Mercurial',
-        
-        # Security
-        'Security', 'SSL', 'TLS', 'Certificate', 'IAM',
-        'Access Control', 'Authentication', 'Authorization',
-        
-        # Networking
-        'Networking', 'Kubernetes Networking', 'Service Mesh',
-        'Istio', 'Load Balancer', 'DNS', 'VPC', 'Subnet',
-        
-        # Storage
-        'Storage', 'S3', 'Blob Storage', 'EBS', 'NFS',
-        'Persistent Volume',
-        
-        # Operating Systems
-        'Linux', 'Windows Server', 'Ubuntu', 'CentOS', 'Red Hat',
-        'RHEL', 'Debian',
-    }
-    
+    tech_keywords = _load_tech_keywords()
+
     found_keywords = []
     text_lower = text.lower()
-    
+
     for keyword in tech_keywords:
         # Use word boundaries for more accurate matching
         pattern = r'\b' + re.escape(keyword.lower()) + r'\b'
         if re.search(pattern, text_lower):
             found_keywords.append(keyword)
-    
+
     return list(set(found_keywords))  # Remove duplicates
 
 
