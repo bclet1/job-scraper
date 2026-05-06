@@ -1,0 +1,42 @@
+{
+  "keywords": [
+    "DevOps",
+    "DevOps Engineer"
+  ],
+  "locations": [
+    "Denver, CO",
+    "remote"
+  ],
+  "max_jobs": 25,
+  "days_old": 1,
+  "output_dir": "./results",
+  "cover_letter_model": "gpt-4o-mini",
+  "cover_letter_instructions": "Write a professional cover letter tailored to the job posting. Keep it to 3 short paragraphs: (1) hook / why this role excites me, (2) 2-3 concrete achievements from my resume that directly match the role requirements, (3) forward-looking close. Vary the tone and framing between the three versions — formal, conversational, and achievement-focused respectively. Do not use generic filler phrases like 'I'm excited to apply' or 'I am writing to express my interest'.",
+  "tech_keywords": [ 
+    "AWS", "Azure", "GCP", "Google Cloud", "Kubernetes", "K8s",
+    "Docker", "ECS", "EKS", "AKS", "GKE",
+    "Terraform", "CloudFormation", "Ansible", "Puppet", "Chef",
+    "Infrastructure as Code", "IaC",
+    "Jenkins", "GitLab CI", "GitHub Actions",
+    "GitLab", "GitHub", "Bitbucket",
+    "CI/CD", "continuous integration", "continuous deployment",
+    "pipeline", "deployment automation",
+    "Datadog", "New Relic", "CloudWatch", "Splunk",
+    "Logging", "Monitoring", "Observability",
+    "Container", "Containerization", "Microservices",
+    "Image registry", "Docker registry",
+    "PostgreSQL", "MySQL", "MongoDB", "DynamoDB", "RDS",
+    "SQL", "NoSQL", "Relational Database",
+    "Python", "Bash", "Shell", "Go", "Java", "Golang",
+    "Ruby", "Perl", "JavaScript", "Node.js",
+    "Git", "Subversion", "SVN", "Mercurial",
+    "Security", "SSL", "TLS", "Certificate", "IAM",
+    "Access Control", "Authentication", "Authorization",
+    "Networking", "Kubernetes Networking", "Service Mesh",
+    "Istio", "Load Balancer", "DNS", "VPC", "Subnet",
+    "Storage", "S3", "Blob Storage", "EBS", "NFS",
+    "Persistent Volume",
+    "Linux", "Windows Server", "Ubuntu", "CentOS", "Red Hat",
+    "RHEL", "Debian"
+  ]
+}
